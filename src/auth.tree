@@ -1,0 +1,7 @@
+auth
+└── when reading a sign-in code
+    ├── it takes a bare code
+    ├── it takes a callback link
+    ├── it takes a redirect url
+    ├── it rejects a link with no code
+    └── it rejects empty input

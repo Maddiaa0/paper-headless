@@ -145,10 +145,22 @@ pub(crate) fn display_number(display: &str) -> Result<u32> {
 mod tests {
     use super::*;
 
-    #[test]
-    fn parses_display_numbers() {
-        assert_eq!(display_number(":99").unwrap(), 99);
-        assert_eq!(display_number(":1.0").unwrap(), 1);
-        assert!(display_number("99").is_err());
+    mod when_reading_a_display {
+        use super::*;
+
+        #[test]
+        fn reads_the_number() {
+            assert_eq!(display_number(":99").unwrap(), 99);
+        }
+
+        #[test]
+        fn drops_the_screen_suffix() {
+            assert_eq!(display_number(":1.0").unwrap(), 1);
+        }
+
+        #[test]
+        fn rejects_a_display_with_no_colon() {
+            assert!(display_number("99").is_err());
+        }
     }
 }

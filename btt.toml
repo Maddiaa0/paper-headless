@@ -1,0 +1,7 @@
+[project]
+packs = ["rust"]
+
+[check]
+extra = "error"
+order = "error"
+uncovered = "error"
