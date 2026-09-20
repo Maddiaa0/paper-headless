@@ -11,4 +11,6 @@ jobs:
       - run: rustup toolchain install
       - run: cargo fmt --check
       - run: cargo clippy --all-targets --locked -- -D warnings
-      - run: cargo test --locked
+      - uses: Maddiaa0/btt-action@v1
+        with:
+          test-command: cargo test --locked
