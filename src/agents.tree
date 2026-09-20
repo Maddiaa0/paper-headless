@@ -1,0 +1,7 @@
+agents
+└── when running an agent command
+    ├── it accepts successful registration
+    ├── it accepts an existing server
+    ├── it reports stderr failures
+    ├── it reports stdout failures
+    └── it reports spawn failures

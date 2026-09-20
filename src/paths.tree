@@ -1,0 +1,14 @@
+paths
+├── when writing state
+│   ├── it creates private parented files
+│   ├── it restricts existing file permissions
+│   └── it creates executable scripts
+├── when reading logs
+│   ├── it returns the last lines
+│   └── it handles missing and empty files
+├── when reading a pid file
+│   ├── it recognizes the current process
+│   └── it rejects malformed and missing files
+└── when locating a program
+    ├── it finds an existing absolute path
+    └── it rejects a missing program

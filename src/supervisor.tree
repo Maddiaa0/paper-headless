@@ -1,0 +1,13 @@
+supervisor
+├── when checking ports
+│   ├── it recognizes a listener
+│   └── it rejects a closed port
+├── when waiting
+│   ├── it returns after the condition succeeds
+│   └── it times out when the condition stays false
+├── when stopping a child
+│   ├── it terminates and reaps the process
+│   └── it kills a process after the grace period
+└── when starting supervision
+    ├── it rejects a missing paper binary
+    └── it rejects an existing supervisor

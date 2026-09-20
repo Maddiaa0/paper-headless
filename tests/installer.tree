@@ -1,0 +1,6 @@
+installer
+└── when invoking the installer
+    ├── it prints help without installing
+    ├── it rejects unknown options without installing
+    ├── it rejects unsupported platforms
+    └── it rejects unsupported architectures

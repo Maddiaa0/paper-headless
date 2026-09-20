@@ -1,7 +1,7 @@
 name: ci
 on:
   push:
-    branches: [main]
+    branches: [master]
   pull_request:
 jobs:
   check:
@@ -9,8 +9,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: rustup toolchain install
+      - run: bash -n install.sh
       - run: cargo fmt --check
       - run: cargo clippy --all-targets --locked -- -D warnings
       - uses: Maddiaa0/btt-action@v1
         with:
+          version: '0.2.0'
           test-command: cargo test --locked

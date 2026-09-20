@@ -99,3 +99,110 @@ pub(crate) fn send_deep_link(settings: &Settings, link: &str) -> Result<()> {
          start the service first (`paper-headless start` or `paper-headless serve`)",
     ))
 }
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::{Temp, settings};
+    mod when_preparing_paper {
+        use super::*;
+        #[test]
+        fn rejects_a_missing_binary() {
+            let t = Temp::new();
+            assert!(
+                ensure_binary(&settings(&t))
+                    .unwrap_err()
+                    .to_string()
+                    .contains("Paper Desktop binary not found")
+            );
+        }
+        #[test]
+        fn accepts_an_existing_binary() {
+            let t = Temp::new();
+            t.script("paper", "exit 0");
+            assert!(ensure_binary(&settings(&t)).is_ok());
+        }
+        #[test]
+        fn captures_browser_urls_through_the_shim() {
+            let t = Temp::new();
+            let s = settings(&t);
+            ensure_shim(&s).unwrap();
+            let shim = s.shim_dir().join("xdg-open");
+            for url in [
+                "https://example.com/?a=1&b=2",
+                "paper://auth/callback?code=test",
+            ] {
+                assert!(
+                    Command::new("/bin/sh")
+                        .arg(&shim)
+                        .arg(url)
+                        .status()
+                        .unwrap()
+                        .success()
+                );
+            }
+            assert_eq!(
+                fs::read_to_string(s.auth_url_file()).unwrap(),
+                "https://example.com/?a=1&b=2\npaper://auth/callback?code=test\n"
+            );
+        }
+        #[test]
+        fn isolates_the_launch_environment() {
+            let t = Temp::new();
+            let s = settings(&t);
+            let c = base_command(&s, None);
+            let args: Vec<_> = c.get_args().collect();
+            assert!(args.contains(&std::ffi::OsStr::new("--no-sandbox")));
+            assert!(args.contains(&std::ffi::OsStr::new("--disable-gpu")));
+            let vars: std::collections::HashMap<_, _> = c.get_envs().collect();
+            assert_eq!(vars[std::ffi::OsStr::new("ELECTRON_RUN_AS_NODE")], None);
+            assert_eq!(vars[std::ffi::OsStr::new("DBUS_SESSION_BUS_ADDRESS")], None);
+            assert_eq!(
+                vars[std::ffi::OsStr::new("DISPLAY")],
+                Some(std::ffi::OsStr::new(":99"))
+            );
+            let c = base_command(&s, Some("unix:path=/tmp/test-bus"));
+            assert!(c.get_envs().any(|(k, v)| k == "DBUS_SESSION_BUS_ADDRESS"
+                && v == Some(std::ffi::OsStr::new("unix:path=/tmp/test-bus"))));
+        }
+    }
+    mod when_launching_paper {
+        use super::*;
+        #[test]
+        fn passes_the_debugging_port_and_captures_logs() {
+            let t = Temp::new();
+            let s = settings(&t);
+            t.script("paper", "printf '%s\n' \"$@\"; echo stderr >&2");
+            let mut child = spawn_primary(&s, None).unwrap();
+            assert!(child.wait().unwrap().success());
+            let log = fs::read_to_string(s.paper_log()).unwrap();
+            assert!(log.contains("--remote-debugging-port=9222"));
+            assert!(log.contains("stderr"));
+        }
+        #[test]
+        fn delivers_a_callback_to_a_second_instance() {
+            let t = Temp::new();
+            let s = settings(&t);
+            let output = t.path.join("argv");
+            t.script(
+                "paper",
+                &format!("printf '%s\n' \"$@\" > {}", output.display()),
+            );
+            send_deep_link(&s, "paper://auth/callback?code=test").unwrap();
+            assert!(
+                fs::read_to_string(output)
+                    .unwrap()
+                    .contains("paper://auth/callback?code=test")
+            );
+        }
+        #[test]
+        fn reports_a_failed_spawn() {
+            let t = Temp::new();
+            assert!(
+                send_deep_link(&settings(&t), "paper://auth/callback?code=test")
+                    .unwrap_err()
+                    .to_string()
+                    .contains("could not start a second Paper instance")
+            );
+        }
+    }
+}

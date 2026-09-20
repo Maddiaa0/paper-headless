@@ -120,3 +120,127 @@ impl Drop for Session {
         let _ = self.socket.close(None);
     }
 }
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use crate::test_support::http;
+    fn session(replies: Vec<Value>, noise: bool) -> (Session, std::thread::JoinHandle<Vec<Value>>) {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("ws://{}", listener.local_addr().unwrap());
+        let worker = std::thread::spawn(move || {
+            let (stream, _) = listener.accept().unwrap();
+            stream
+                .set_read_timeout(Some(Duration::from_secs(3)))
+                .unwrap();
+            let mut ws = tungstenite::accept(stream).unwrap();
+            let mut requests = Vec::new();
+            for mut reply in replies {
+                let request: Value =
+                    serde_json::from_str(ws.read().unwrap().to_text().unwrap()).unwrap();
+                if noise {
+                    ws.send(Message::text(json!({"method":"Page.event"}).to_string()))
+                        .unwrap();
+                    ws.send(Message::text(json!({"id":999,"result":{}}).to_string()))
+                        .unwrap();
+                }
+                reply["id"] = request["id"].clone();
+                ws.send(Message::text(reply.to_string())).unwrap();
+                requests.push(request);
+            }
+            requests
+        });
+        (Session::connect(&url).unwrap(), worker)
+    }
+
+    mod when_listing_targets {
+        use super::*;
+        #[test]
+        fn keeps_only_page_targets() {
+            let (url, w) = http(
+                200,
+                "",
+                r#"[{"type":"page","url":"https://app.paper.design/","webSocketDebuggerUrl":"ws://example"},{"type":"worker","url":"worker"}]"#,
+            );
+            let targets = pages(&url).unwrap();
+            assert_eq!(targets.len(), 1);
+            assert_eq!(targets[0].ws_url.as_deref(), Some("ws://example"));
+            assert!(w.join().unwrap().starts_with("GET /json "));
+        }
+        #[test]
+        fn rejects_malformed_target_data() {
+            let (url, w) = http(200, "", "not json");
+            assert!(pages(&url).is_err());
+            w.join().unwrap();
+        }
+    }
+    mod when_evaluating_a_script {
+        use super::*;
+        #[test]
+        fn ignores_events_and_unrelated_replies() {
+            let (mut s, w) = session(vec![json!({"result":{"result":{"value":42}}})], true);
+            assert_eq!(s.evaluate("6 * 7").unwrap(), json!(42));
+            let reqs = w.join().unwrap();
+            assert_eq!(reqs[0]["method"], "Runtime.evaluate");
+            assert_eq!(reqs[0]["params"]["expression"], "6 * 7");
+        }
+        #[test]
+        fn reports_protocol_errors() {
+            let (mut s, w) = session(vec![json!({"error":{"message":"denied"}})], false);
+            assert!(s.evaluate("1").unwrap_err().to_string().contains("denied"));
+            w.join().unwrap();
+        }
+        #[test]
+        fn reports_javascript_exceptions() {
+            let (mut s, w) = session(
+                vec![json!({"result":{"exceptionDetails":{"text":"ReferenceError"}}})],
+                false,
+            );
+            assert!(
+                s.evaluate("missing")
+                    .unwrap_err()
+                    .to_string()
+                    .contains("ReferenceError")
+            );
+            w.join().unwrap();
+        }
+    }
+    mod when_clicking_sign_in {
+        use super::*;
+        #[test]
+        fn sends_trusted_events_at_the_button_center() {
+            let (mut s, w) = session(
+                vec![
+                    json!({"result":{"result":{"value":{"x":10,"y":20,"w":80,"h":40}}}}),
+                    json!({"result":{}}),
+                    json!({"result":{}}),
+                    json!({"result":{}}),
+                ],
+                false,
+            );
+            assert_eq!(s.click_first_button().unwrap(), (50.0, 40.0));
+            let reqs = w.join().unwrap();
+            for (req, kind) in reqs[1..]
+                .iter()
+                .zip(["mouseMoved", "mousePressed", "mouseReleased"])
+            {
+                assert_eq!(req["method"], "Input.dispatchMouseEvent");
+                assert_eq!(req["params"]["type"], kind);
+                assert_eq!(req["params"]["x"], 50.0);
+                assert_eq!(req["params"]["y"], 40.0);
+            }
+            assert_eq!(reqs[2]["params"]["button"], "left");
+        }
+        #[test]
+        fn rejects_a_missing_button() {
+            let (mut s, w) = session(vec![json!({"result":{"result":{"value":null}}})], false);
+            assert!(
+                s.click_first_button()
+                    .unwrap_err()
+                    .to_string()
+                    .contains("no <button>")
+            );
+            assert_eq!(w.join().unwrap().len(), 1);
+        }
+    }
+}

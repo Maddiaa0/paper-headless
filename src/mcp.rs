@@ -104,3 +104,80 @@ pub(crate) fn require_ready(mcp_url: &str) -> Result<String> {
         rejected => Err(Error::msg(describe(&rejected))),
     }
 }
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::http;
+    const READY: &str = r#"{"jsonrpc":"2.0","id":1,"result":{"serverInfo":{"name":"paper-desktop","version":"test"}}}"#;
+    mod when_parsing_a_response {
+        use super::*;
+        #[test]
+        fn accepts_plain_json() {
+            assert_eq!(
+                parse_message(READY).unwrap()["result"]["serverInfo"]["name"],
+                "paper-desktop"
+            );
+        }
+        #[test]
+        fn accepts_sse_after_unrelated_events() {
+            let body = format!("event: message\ndata: {{}}\ndata: invalid\ndata: {READY}\n\n");
+            assert!(parse_message(&body).unwrap().get("result").is_some());
+        }
+        #[test]
+        fn ignores_malformed_data() {
+            for body in ["", "{broken", "data: not json", "event: ping"] {
+                assert!(parse_message(body).is_none());
+            }
+        }
+    }
+    mod when_probing_an_endpoint {
+        use super::*;
+        #[test]
+        fn sends_the_initialize_contract() {
+            let (url, worker) = http(200, "mcp-session-id: test\r\n", READY);
+            assert_eq!(require_ready(&url).unwrap(), "paper-desktop test");
+            let request = worker.join().unwrap();
+            assert!(request.starts_with("POST / HTTP/1.1"));
+            let body: Value =
+                serde_json::from_str(request.split("\r\n\r\n").nth(1).unwrap()).unwrap();
+            assert_eq!(body["method"], "initialize");
+            assert_eq!(body["params"]["protocolVersion"], "2025-03-26");
+            assert_eq!(body["params"]["clientInfo"]["name"], "paper-headless");
+        }
+        #[test]
+        fn accepts_an_sse_handshake() {
+            let (url, worker) = http(
+                200,
+                "mcp-session-id: test\r\nContent-Type: text/event-stream\r\n",
+                &format!("data: {READY}\n\n"),
+            );
+            assert!(probe(&url).unwrap().is_ready());
+            worker.join().unwrap();
+        }
+        #[test]
+        fn rejects_a_missing_session() {
+            let (url, worker) = http(200, "", READY);
+            assert!(!probe(&url).unwrap().is_ready());
+            worker.join().unwrap();
+        }
+        #[test]
+        fn reports_a_protocol_error() {
+            let (url, worker) = http(200, "", r#"{"error":{"message":"Sign in required"}}"#);
+            let err = require_ready(&url).unwrap_err();
+            assert!(err.to_string().contains("Sign in required"));
+            worker.join().unwrap();
+        }
+        #[test]
+        fn reports_an_http_error() {
+            let (url, worker) = http(500, "", "renderer unavailable");
+            let result = probe(&url).unwrap();
+            assert!(describe(&result).contains("HTTP 500"));
+            assert!(describe(&result).contains("renderer unavailable"));
+            worker.join().unwrap();
+        }
+        #[test]
+        fn propagates_transport_errors() {
+            assert!(probe("not a url").is_err());
+        }
+    }
+}

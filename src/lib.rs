@@ -25,6 +25,8 @@ mod paths;
 mod service;
 mod settings;
 mod supervisor;
+#[cfg(test)]
+mod test_support;
 
 pub use error::{Error, Result};
 

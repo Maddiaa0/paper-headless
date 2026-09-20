@@ -1,0 +1,27 @@
+commands
+├── when using the cli
+│   ├── it lists all commands in help
+│   ├── it rejects unknown commands
+│   ├── it rejects invalid ports
+│   ├── it rejects an invalid display
+│   ├── it reads logs from the selected data directory
+│   └── it reports missing logs
+├── when managing the service
+│   ├── it installs a user unit and registers agents
+│   ├── it skips agent registration on request
+│   ├── it routes start stop and restart to systemctl
+│   ├── it preserves the profile on uninstall
+│   ├── it purges the profile on request
+│   ├── it rejects start without installation
+│   └── it routes journal flags
+├── when diagnosing an isolated installation
+│   ├── it reports missing dependencies and endpoints
+│   └── it reports status without modifying the profile
+├── when configuring agents
+│   ├── it registers both clients
+│   ├── it removes both registrations
+│   └── it prints manual setup without clients
+└── when checking authentication
+    ├── it rejects an error page before mcp
+    ├── it rejects background pages before mcp
+    └── it accepts a signed in renderer and handshake

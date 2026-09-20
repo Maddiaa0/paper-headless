@@ -1,0 +1,12 @@
+mcp
+├── when parsing a response
+│   ├── it accepts plain json
+│   ├── it accepts sse after unrelated events
+│   └── it ignores malformed data
+└── when probing an endpoint
+    ├── it sends the initialize contract
+    ├── it accepts an sse handshake
+    ├── it rejects a missing session
+    ├── it reports a protocol error
+    ├── it reports an http error
+    └── it propagates transport errors

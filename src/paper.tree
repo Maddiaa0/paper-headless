@@ -1,0 +1,10 @@
+paper
+├── when preparing paper
+│   ├── it rejects a missing binary
+│   ├── it accepts an existing binary
+│   ├── it captures browser urls through the shim
+│   └── it isolates the launch environment
+└── when launching paper
+    ├── it passes the debugging port and captures logs
+    ├── it delivers a callback to a second instance
+    └── it reports a failed spawn
