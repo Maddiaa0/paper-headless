@@ -207,18 +207,41 @@ fn wait_for_line(path: &std::path::Path, timeout: Duration) -> Option<String> {
 mod tests {
     use super::*;
 
-    #[test]
-    fn extracts_codes_from_every_shape() {
-        assert_eq!(extract_code("ABC123").unwrap(), "ABC123");
-        assert_eq!(
-            extract_code("paper://auth/callback?code=ABC123").unwrap(),
-            "ABC123"
-        );
-        assert_eq!(
-            extract_code("https://workers.paper.design/auth/desktop-redirect?protocol=paper&code=ABC123&state=xyz").unwrap(),
-            "ABC123"
-        );
-        assert!(extract_code("https://example.com/").is_err());
-        assert!(extract_code("").is_err());
+    mod when_reading_a_sign_in_code {
+        use super::*;
+
+        #[test]
+        fn takes_a_bare_code() {
+            assert_eq!(extract_code("ABC123").unwrap(), "ABC123");
+        }
+
+        #[test]
+        fn takes_a_callback_link() {
+            assert_eq!(
+                extract_code("paper://auth/callback?code=ABC123").unwrap(),
+                "ABC123"
+            );
+        }
+
+        #[test]
+        fn takes_a_redirect_url() {
+            assert_eq!(
+                extract_code(
+                    "https://workers.paper.design/auth/desktop-redirect?protocol=paper&code=ABC123&state=xyz"
+                )
+                .unwrap(),
+                "ABC123"
+            );
+        }
+
+        #[test]
+        fn rejects_a_link_with_no_code() {
+            assert!(extract_code("https://example.com/").is_err());
+        }
+
+        #[test]
+        fn rejects_empty_input() {
+            assert!(extract_code("").is_err());
+        }
     }
 }

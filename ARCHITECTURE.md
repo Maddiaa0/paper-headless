@@ -53,5 +53,7 @@ check ──────► POST initialize to 127.0.0.1:29979/mcp              
 
 ## Testing
 
-`cargo test` covers the pure parsing. Live testing: `cargo install --path .
---locked && paper-headless install && paper-headless status`, then `login`.
+`cargo test` covers the pure parsing. Each tested module has a `.tree` spec
+beside it ([btt](https://github.com/Maddiaa0/btt)); `btt check` fails when the
+tests and the spec disagree. Live testing: `cargo install --path . --locked &&
+paper-headless install && paper-headless status`, then `login`.

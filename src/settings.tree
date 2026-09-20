@@ -1,0 +1,5 @@
+settings
+└── when reading a display
+    ├── it reads the number
+    ├── it drops the screen suffix
+    └── it rejects a display with no colon
