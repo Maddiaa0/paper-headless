@@ -129,7 +129,7 @@ paper-headless configure-agents --remove
 
 ## Development checks
 
-With the pinned Rust toolchain and BTT installed, run:
+With the pinned Rust toolchain and BTT v0.2.0 installed, run:
 
 ```sh
 cargo fmt --check
