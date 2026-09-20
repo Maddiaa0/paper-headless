@@ -1,6 +1,6 @@
 //! One request against Paper's MCP endpoint: `initialize`. Paper answers it
-//! only when the app is signed in and its renderer is ready, which makes it
-//! the cheapest end-to-end health check. Agents talk to the endpoint
+//! when a renderer is available, including an authentication error page.
+//! This checks the transport, not sign-in. Agents talk to the endpoint
 //! directly; this crate never proxies or re-implements MCP tools.
 
 use crate::{Error, Result};

@@ -24,10 +24,31 @@ pub(crate) enum SignInState {
 
 pub(crate) fn sign_in_state(settings: &Settings) -> Result<SignInState> {
     let pages = cdp::pages(&settings.cdp_url())?;
-    if pages.iter().any(|page| page.url.contains(SIGN_IN_PAGE)) {
+    state_from_pages(&pages)
+}
+
+fn state_from_pages(pages: &[cdp::Target]) -> Result<SignInState> {
+    let paths: Vec<_> = pages
+        .iter()
+        .filter_map(|page| page.url.strip_prefix("https://app.paper.design/"))
+        .filter_map(|path| path.split(['?', '#']).next())
+        .collect();
+    if paths
+        .iter()
+        .any(|path| matches!(*path, "error" | "error.html"))
+    {
+        return Err(Error::msg(
+            "Paper rejected sign-in. Run `paper-headless restart`, then `paper-headless login` \
+             for a fresh callback. Do not let a local Paper app consume the callback first.",
+        ));
+    }
+    if paths.iter().any(|path| path.contains(SIGN_IN_PAGE)) {
         return Ok(SignInState::SignedOut);
     }
-    if pages.iter().any(|page| page.url.contains("paper.design")) {
+    if paths
+        .iter()
+        .any(|path| !path.starts_with("static/desktop/") && !path.starts_with("www/desktop/"))
+    {
         return Ok(SignInState::SignedIn);
     }
     Ok(SignInState::Unknown)
@@ -206,6 +227,28 @@ fn wait_for_line(path: &std::path::Path, timeout: Duration) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn error_and_background_pages_are_not_signed_in() {
+        let page = |url: &str| cdp::Target {
+            kind: "page".into(),
+            url: format!("https://app.paper.design/{url}"),
+            ws_url: None,
+        };
+        let mut pages = vec![
+            page("static/desktop/preloader"),
+            page("www/desktop/app-bar"),
+        ];
+        assert_eq!(state_from_pages(&pages).unwrap(), SignInState::Unknown);
+        pages.push(page("error?message=Could%20not%20complete%20signing%20in"));
+        assert!(state_from_pages(&pages).is_err());
+        pages.pop();
+        pages.push(page("www/desktop/sign-in"));
+        assert_eq!(state_from_pages(&pages).unwrap(), SignInState::SignedOut);
+        pages.pop();
+        pages.push(page(""));
+        assert_eq!(state_from_pages(&pages).unwrap(), SignInState::SignedIn);
+    }
 
     mod when_reading_a_sign_in_code {
         use super::*;
