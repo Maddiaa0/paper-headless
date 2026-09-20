@@ -35,7 +35,7 @@ From a checkout: `cargo install --path . --locked`.
 ```sh
 paper-headless install     # systemd user service + Claude Code / Codex config
 paper-headless login       # prints a sign-in URL; open it anywhere, paste the result back
-paper-headless check       # MCP handshake succeeds
+paper-headless check       # sign-in and MCP handshake succeed
 ```
 
 `login` clicks Paper's "Sign in" button for you and captures the URL the app
@@ -59,7 +59,7 @@ paper-headless status                    Service, processes, ports, sign-in, MCP
 paper-headless logs [-n N] [--journal] [-f]
 paper-headless login [--no-wait]         Start sign-in, print the URL, wait for the code
 paper-headless login-code <link|code>    Finish sign-in
-paper-headless check                     MCP initialize handshake
+paper-headless check                     Verify sign-in and MCP initialize handshake
 paper-headless configure-agents [--remove]
 paper-headless doctor                    Required programs and current state
 paper-headless serve                     Foreground mode (what the service runs)
@@ -126,3 +126,26 @@ ssh -L 5900:127.0.0.1:5900 user@server
 paper-headless uninstall --purge      # service + profile (login)
 paper-headless configure-agents --remove
 ```
+
+## Development checks
+
+With the pinned Rust toolchain and BTT v0.2.0 installed, run:
+
+```sh
+cargo fmt --check
+cargo clippy --all-targets --locked -- -D warnings
+btt check
+cargo test --locked
+bash -n install.sh
+```
+
+Write each test's behavior in its `.tree` file first. Trees beside Rust
+modules cover their internal behavior. `tests/commands.tree` covers CLI
+commands, including service management and diagnostics, and
+`tests/installer.tree` covers installer validation. BTT rejects missing,
+extra, out-of-order, and uncovered tests.
+
+The automated suite uses temporary profiles, local HTTP/WebSocket fixtures,
+and substitute system commands. It does not require Paper, Xvfb, a login,
+or a running systemd manager. Browser authentication and persistence across
+real Paper restarts require a separate live check.

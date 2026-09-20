@@ -7,7 +7,7 @@
 //! - [`supervisor`]: `serve` — Xvfb, a session bus, and a supervised Paper
 //! - [`paper`]: Paper launch arguments, the `xdg-open` shim, deep links
 //! - [`cdp`]: a minimal Chrome DevTools Protocol client (trusted clicks)
-//! - [`mcp`]: a one-request probe of the MCP endpoint (is it up and signed in)
+//! - [`mcp`]: a one-request probe of the MCP transport
 //! - [`auth`]: the relayed browser sign-in flow
 //! - [`service`]: systemd unit management
 //! - [`agents`]: registering the MCP endpoint with Claude Code and Codex
@@ -25,6 +25,8 @@ mod paths;
 mod service;
 mod settings;
 mod supervisor;
+#[cfg(test)]
+mod test_support;
 
 pub use error::{Error, Result};
 

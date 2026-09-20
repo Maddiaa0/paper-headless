@@ -167,6 +167,11 @@ pub(crate) fn dispatch(cli: Cli) -> Result<()> {
         Commands::Login { no_wait } => auth::login(&settings, !no_wait),
         Commands::LoginCode { value, no_wait } => auth::login_code(&settings, &value, !no_wait),
         Commands::Check => {
+            if auth::sign_in_state(&settings)? != auth::SignInState::SignedIn {
+                return Err(crate::Error::msg(
+                    "Paper is not signed in; run `paper-headless login`",
+                ));
+            }
             let server = mcp::require_ready(&settings.mcp_url())?;
             println!("MCP ready at {} ({server})", settings.mcp_url());
             Ok(())

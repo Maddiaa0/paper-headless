@@ -69,3 +69,60 @@ fn run(name: &str, binary: &std::path::Path, args: &[&str]) -> Result<()> {
         )))
     }
 }
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::Temp;
+    mod when_running_an_agent_command {
+        use super::*;
+        #[test]
+        fn accepts_successful_registration() {
+            let t = Temp::new();
+            let p = t.script("agent", "echo registered");
+            run("agent", &p, &["mcp", "add"]).unwrap();
+        }
+        #[test]
+        fn accepts_an_existing_server() {
+            let t = Temp::new();
+            for body in [
+                "echo already exists >&2; exit 1",
+                "echo already exists; exit 1",
+            ] {
+                let p = t.script("agent", body);
+                assert!(run("agent", &p, &[]).is_ok());
+            }
+        }
+        #[test]
+        fn reports_stderr_failures() {
+            let t = Temp::new();
+            let p = t.script("agent", "echo denied >&2; exit 1");
+            assert!(
+                run("agent", &p, &["mcp"])
+                    .unwrap_err()
+                    .to_string()
+                    .contains("denied")
+            );
+        }
+        #[test]
+        fn reports_stdout_failures() {
+            let t = Temp::new();
+            let p = t.script("agent", "echo failed; exit 1");
+            assert!(
+                run("agent", &p, &[])
+                    .unwrap_err()
+                    .to_string()
+                    .contains("failed")
+            );
+        }
+        #[test]
+        fn reports_spawn_failures() {
+            let t = Temp::new();
+            assert!(
+                run("agent", &t.path.join("missing"), &[])
+                    .unwrap_err()
+                    .to_string()
+                    .contains("could not run agent")
+            );
+        }
+    }
+}

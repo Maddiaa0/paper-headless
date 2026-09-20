@@ -147,20 +147,93 @@ mod tests {
 
     mod when_reading_a_display {
         use super::*;
-
         #[test]
         fn reads_the_number() {
             assert_eq!(display_number(":99").unwrap(), 99);
         }
-
         #[test]
         fn drops_the_screen_suffix() {
             assert_eq!(display_number(":1.0").unwrap(), 1);
         }
-
         #[test]
         fn rejects_a_display_with_no_colon() {
             assert!(display_number("99").is_err());
+        }
+        #[test]
+        fn rejects_a_nonnumeric_display() {
+            for value in [":", ":abc", ":-1"] {
+                assert!(display_number(value).is_err());
+            }
+        }
+    }
+    mod when_resolving_settings {
+        use super::*;
+        #[test]
+        fn preserves_explicit_overrides() {
+            let s = Settings::resolve(
+                Some("/tmp/custom".into()),
+                ":12".into(),
+                "800x600x24".into(),
+                9001,
+                9002,
+                Some("/bin/true".into()),
+            )
+            .unwrap();
+            assert_eq!(s.display_number(), 12);
+            assert_eq!(s.screen, "800x600x24");
+            assert_eq!(s.paper_binary, PathBuf::from("/bin/true"));
+            assert_eq!(s.cdp_port, 9001);
+            assert_eq!(s.mcp_port, 9002);
+        }
+        #[test]
+        fn rejects_an_invalid_display() {
+            assert!(
+                Settings::resolve(
+                    Some("/tmp/custom".into()),
+                    "invalid".into(),
+                    "800x600x24".into(),
+                    9001,
+                    9002,
+                    Some("/bin/true".into())
+                )
+                .is_err()
+            );
+        }
+        #[test]
+        fn keeps_state_paths_under_the_data_directory() {
+            let t = crate::test_support::Temp::new();
+            let s = crate::test_support::settings(&t);
+            for path in [
+                s.profile_dir(),
+                s.shim_dir(),
+                s.auth_url_file(),
+                s.paper_log(),
+                s.xvfb_log(),
+                s.paper_pid_file(),
+                s.serve_pid_file(),
+                s.dbus_socket(),
+            ] {
+                assert!(path.starts_with(&t.path));
+            }
+            assert_eq!(s.x_socket(), PathBuf::from("/tmp/.X11-unix/X99"));
+        }
+        #[test]
+        fn binds_endpoint_urls_to_loopback() {
+            let t = crate::test_support::Temp::new();
+            let s = crate::test_support::settings(&t);
+            assert_eq!(s.cdp_url(), "http://127.0.0.1:9222");
+            assert_eq!(s.mcp_url(), "http://127.0.0.1:29979/mcp");
+        }
+        #[test]
+        fn persists_settings_into_the_service_environment() {
+            let t = crate::test_support::Temp::new();
+            let s = crate::test_support::settings(&t);
+            let lines = s.environment_lines();
+            assert!(lines.contains(&format!("PAPER_HEADLESS_DATA_DIR={}", t.path.display())));
+            assert!(lines.contains(&"PAPER_HEADLESS_DISPLAY=:99".into()));
+            assert!(lines.contains(&"PAPER_HEADLESS_CDP_PORT=9222".into()));
+            assert!(lines.contains(&"PAPER_HEADLESS_MCP_PORT=29979".into()));
+            assert!(lines.contains(&format!("PAPER_DESKTOP_BIN={}", s.paper_binary.display())));
         }
     }
 }

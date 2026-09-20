@@ -24,10 +24,31 @@ pub(crate) enum SignInState {
 
 pub(crate) fn sign_in_state(settings: &Settings) -> Result<SignInState> {
     let pages = cdp::pages(&settings.cdp_url())?;
-    if pages.iter().any(|page| page.url.contains(SIGN_IN_PAGE)) {
+    state_from_pages(&pages)
+}
+
+fn state_from_pages(pages: &[cdp::Target]) -> Result<SignInState> {
+    let paths: Vec<_> = pages
+        .iter()
+        .filter_map(|page| page.url.strip_prefix("https://app.paper.design/"))
+        .filter_map(|path| path.split(['?', '#']).next())
+        .collect();
+    if paths
+        .iter()
+        .any(|path| matches!(*path, "error" | "error.html"))
+    {
+        return Err(Error::msg(
+            "Paper rejected sign-in. Run `paper-headless restart`, then `paper-headless login` \
+             for a fresh callback. Do not let a local Paper app consume the callback first.",
+        ));
+    }
+    if paths.iter().any(|path| path.contains(SIGN_IN_PAGE)) {
         return Ok(SignInState::SignedOut);
     }
-    if pages.iter().any(|page| page.url.contains("paper.design")) {
+    if paths
+        .iter()
+        .any(|path| !path.starts_with("static/desktop/") && !path.starts_with("www/desktop/"))
+    {
         return Ok(SignInState::SignedIn);
     }
     Ok(SignInState::Unknown)
@@ -207,14 +228,20 @@ fn wait_for_line(path: &std::path::Path, timeout: Duration) -> Option<String> {
 mod tests {
     use super::*;
 
+    fn page(path: &str) -> cdp::Target {
+        cdp::Target {
+            kind: "page".into(),
+            url: format!("https://app.paper.design/{path}"),
+            ws_url: None,
+        }
+    }
+
     mod when_reading_a_sign_in_code {
         use super::*;
-
         #[test]
         fn takes_a_bare_code() {
             assert_eq!(extract_code("ABC123").unwrap(), "ABC123");
         }
-
         #[test]
         fn takes_a_callback_link() {
             assert_eq!(
@@ -222,26 +249,96 @@ mod tests {
                 "ABC123"
             );
         }
-
         #[test]
         fn takes_a_redirect_url() {
-            assert_eq!(
-                extract_code(
-                    "https://workers.paper.design/auth/desktop-redirect?protocol=paper&code=ABC123&state=xyz"
-                )
-                .unwrap(),
-                "ABC123"
-            );
+            assert_eq!(extract_code("https://workers.paper.design/auth/desktop-redirect?protocol=paper&code=ABC123&state=xyz").unwrap(), "ABC123");
         }
-
         #[test]
         fn rejects_a_link_with_no_code() {
             assert!(extract_code("https://example.com/").is_err());
         }
-
         #[test]
         fn rejects_empty_input() {
             assert!(extract_code("").is_err());
+        }
+        #[test]
+        fn trims_surrounding_whitespace() {
+            assert_eq!(extract_code("  ABC123\n").unwrap(), "ABC123");
+        }
+        #[test]
+        fn stops_at_a_fragment() {
+            assert_eq!(
+                extract_code("paper://auth/callback?code=ABC123#fragment").unwrap(),
+                "ABC123"
+            );
+        }
+    }
+    mod when_checking_sign_in_state {
+        use super::*;
+        #[test]
+        fn rejects_an_authentication_error_page() {
+            for url in ["error?message=failed", "error.html?message=failed"] {
+                let err = state_from_pages(&[page(url), page("file/open")]).unwrap_err();
+                assert!(err.to_string().contains("Paper rejected sign-in"));
+            }
+        }
+        #[test]
+        fn ignores_background_windows() {
+            assert_eq!(
+                state_from_pages(&[
+                    page("static/desktop/preloader"),
+                    page("www/desktop/app-bar")
+                ])
+                .unwrap(),
+                SignInState::Unknown
+            );
+        }
+        #[test]
+        fn recognizes_the_sign_in_page() {
+            for url in ["www/desktop/sign-in", "www/desktop/sign-in.html"] {
+                assert_eq!(
+                    state_from_pages(&[page(url)]).unwrap(),
+                    SignInState::SignedOut
+                );
+            }
+        }
+        #[test]
+        fn recognizes_an_open_file() {
+            assert_eq!(
+                state_from_pages(&[page("file/example"), page("www/desktop/app-bar")]).unwrap(),
+                SignInState::SignedIn
+            );
+        }
+        #[test]
+        fn ignores_unrelated_origins() {
+            let mut target = page("");
+            target.url = "https://app.paper.design.example.com/file/example".into();
+            assert_eq!(state_from_pages(&[target]).unwrap(), SignInState::Unknown);
+        }
+        #[test]
+        fn prefers_signed_out_over_a_file() {
+            assert_eq!(
+                state_from_pages(&[page("file/example"), page("www/desktop/sign-in")]).unwrap(),
+                SignInState::SignedOut
+            );
+        }
+    }
+    mod when_waiting_for_a_browser_url {
+        use super::*;
+        #[test]
+        fn reads_the_last_nonempty_line() {
+            let temp = crate::test_support::Temp::new();
+            let file = temp.path.join("url");
+            fs::write(&file, "old\nnew\n\n").unwrap();
+            assert_eq!(
+                wait_for_line(&file, Duration::from_millis(10)).as_deref(),
+                Some("new")
+            );
+        }
+        #[test]
+        fn times_out_for_a_missing_file() {
+            let temp = crate::test_support::Temp::new();
+            assert!(wait_for_line(&temp.path.join("missing"), Duration::ZERO).is_none());
         }
     }
 }

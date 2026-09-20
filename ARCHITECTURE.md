@@ -18,7 +18,7 @@ login ──────► DevTools: click "Sign in" ─► Paper calls xdg-ope
 login-code ─► second Paper instance with paper://auth/callback?code=…      paper.rs
               ─► single-instance lock hands it to the running app ─► session cookie
               ▼
-check ──────► POST initialize to 127.0.0.1:29979/mcp                        mcp.rs
+check ──────► verify renderer sign-in, then POST initialize              auth.rs, mcp.rs
 ```
 
 ## Module map
@@ -46,14 +46,24 @@ check ──────► POST initialize to 127.0.0.1:29979/mcp              
   display is reused, not owned.
 - **Loopback only.** DevTools and MCP bind 127.0.0.1; the crate never
   changes that.
-- **Login never requires a restart.** The service runs with DevTools on from
+- **Login uses the running instance.** The service runs with DevTools on from
   the start so `login` works against the live instance, and `login-code`
   waits for Chromium's cookie flush before returning.
 - **Unsafe is forbidden.** Signals go through `nix` and `signal-hook`.
 
 ## Testing
 
-`cargo test` covers the pure parsing. Each tested module has a `.tree` spec
-beside it ([btt](https://github.com/Maddiaa0/btt)); `btt check` fails when the
-tests and the spec disagree. Live testing: `cargo install --path . --locked &&
-paper-headless install && paper-headless status`, then `login`.
+`btt check` verifies the `.tree` specifications against the Rust tests.
+`cargo test --locked` exercises parsing, filesystem permissions, process
+control, HTTP and WebSocket protocols, service configuration, agent
+registration, CLI dispatch, and installer validation. Tests isolate their
+state and substitute system commands instead of changing the host service.
+
+The MCP handshake checks transport availability, not authentication: Paper
+can answer it while displaying an authentication error. `check` validates
+the renderer's sign-in state first. Error pages fail, and background windows
+do not count as a signed-in renderer.
+
+Live verification additionally requires Paper and browser sign-in. Run
+`paper-headless login`, `paper-headless check`, then restart and repeat the
+check. Confirm a read-only MCP file query succeeds after the restart.

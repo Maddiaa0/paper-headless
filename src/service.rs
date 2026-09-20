@@ -213,3 +213,56 @@ pub(crate) fn journal(scope: Scope, lines: usize, follow: bool) -> Result<()> {
         Err(Error::msg(format!("journalctl exited with {status}")))
     }
 }
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::{Temp, settings};
+    mod when_generating_a_unit {
+        use super::*;
+        #[test]
+        fn uses_the_user_service_target() {
+            let t = Temp::new();
+            let s = settings(&t);
+            let unit = unit_contents(&s, Scope::User, std::path::Path::new("/bin/paper-headless"))
+                .unwrap();
+            assert!(unit.contains("WantedBy=default.target"));
+            assert!(unit.contains("KillMode=mixed"));
+            assert!(unit.contains("Restart=on-failure"));
+            for line in s.environment_lines() {
+                assert!(unit.contains(&format!("Environment={line}")));
+            }
+            assert!(!unit.contains("\nUser="));
+        }
+        #[test]
+        fn uses_the_system_service_target() {
+            let t = Temp::new();
+            let unit = unit_contents(
+                &settings(&t),
+                Scope::System,
+                std::path::Path::new("/bin/paper-headless"),
+            )
+            .unwrap();
+            assert!(unit.contains("WantedBy=multi-user.target"));
+            assert!(unit.contains("\nUser="));
+            assert!(unit.contains("Environment=HOME="));
+        }
+        #[test]
+        fn quotes_the_executable_path() {
+            let t = Temp::new();
+            let unit = unit_contents(
+                &settings(&t),
+                Scope::User,
+                std::path::Path::new("/tmp/my tool"),
+            )
+            .unwrap();
+            assert!(unit.contains("ExecStart=\"/tmp/my tool\" serve"));
+        }
+        #[test]
+        fn rejects_a_nonutf8_executable() {
+            use std::os::unix::ffi::OsStringExt;
+            let t = Temp::new();
+            let p = PathBuf::from(std::ffi::OsString::from_vec(vec![255]));
+            assert!(unit_contents(&settings(&t), Scope::User, &p).is_err());
+        }
+    }
+}

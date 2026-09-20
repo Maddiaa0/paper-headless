@@ -225,3 +225,72 @@ fn terminate(child: &mut Child, grace: Duration) {
 fn log(message: &str) {
     eprintln!("[paper-headless] {message}");
 }
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::{Temp, settings};
+    mod when_checking_ports {
+        use super::*;
+        #[test]
+        fn recognizes_a_listener() {
+            let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            assert!(port_open(l.local_addr().unwrap().port()));
+        }
+        #[test]
+        fn rejects_a_closed_port() {
+            assert!(!port_open(0));
+        }
+    }
+    mod when_waiting {
+        use super::*;
+        #[test]
+        fn returns_after_the_condition_succeeds() {
+            assert!(wait_for(Duration::from_millis(10), || true).is_some());
+        }
+        #[test]
+        fn times_out_when_the_condition_stays_false() {
+            assert!(wait_for(Duration::from_millis(1), || false).is_none());
+        }
+    }
+    mod when_stopping_a_child {
+        use super::*;
+        #[test]
+        fn terminates_and_reaps_the_process() {
+            let mut child = Command::new("/bin/sleep").arg("30").spawn().unwrap();
+            terminate(&mut child, Duration::from_secs(1));
+            assert!(child.try_wait().unwrap().is_some());
+        }
+        #[test]
+        fn kills_a_process_after_the_grace_period() {
+            let mut child = Command::new("/bin/sleep").arg("30").spawn().unwrap();
+            terminate(&mut child, Duration::ZERO);
+            assert!(child.try_wait().unwrap().is_some());
+        }
+    }
+    mod when_starting_supervision {
+        use super::*;
+        #[test]
+        fn rejects_a_missing_paper_binary() {
+            let t = Temp::new();
+            assert!(
+                serve(&settings(&t))
+                    .unwrap_err()
+                    .to_string()
+                    .contains("Paper Desktop binary not found")
+            );
+        }
+        #[test]
+        fn rejects_an_existing_supervisor() {
+            let t = Temp::new();
+            let s = settings(&t);
+            t.script("paper", "exit 0");
+            fs::write(s.serve_pid_file(), std::process::id().to_string()).unwrap();
+            assert!(
+                serve(&s)
+                    .unwrap_err()
+                    .to_string()
+                    .contains("already running")
+            );
+        }
+    }
+}

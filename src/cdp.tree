@@ -1,0 +1,11 @@
+cdp
+├── when listing targets
+│   ├── it keeps only page targets
+│   └── it rejects malformed target data
+├── when evaluating a script
+│   ├── it ignores events and unrelated replies
+│   ├── it reports protocol errors
+│   └── it reports javascript exceptions
+└── when clicking sign in
+    ├── it sends trusted events at the button center
+    └── it rejects a missing button

@@ -1,0 +1,6 @@
+service
+└── when generating a unit
+    ├── it uses the user service target
+    ├── it uses the system service target
+    ├── it quotes the executable path
+    └── it rejects a nonutf8 executable

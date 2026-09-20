@@ -1,5 +1,12 @@
 settings
-└── when reading a display
-    ├── it reads the number
-    ├── it drops the screen suffix
-    └── it rejects a display with no colon
+├── when reading a display
+│   ├── it reads the number
+│   ├── it drops the screen suffix
+│   ├── it rejects a display with no colon
+│   └── it rejects a nonnumeric display
+└── when resolving settings
+    ├── it preserves explicit overrides
+    ├── it rejects an invalid display
+    ├── it keeps state paths under the data directory
+    ├── it binds endpoint urls to loopback
+    └── it persists settings into the service environment

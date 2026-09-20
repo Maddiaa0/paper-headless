@@ -61,3 +61,105 @@ pub(crate) fn tail(path: &Path, lines: usize) -> String {
     let start = all.len().saturating_sub(lines);
     all[start..].join("\n")
 }
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::Temp;
+    use std::os::unix::fs::PermissionsExt;
+    mod when_writing_state {
+        use super::*;
+        #[test]
+        fn creates_private_parented_files() {
+            let t = Temp::new();
+            let p = t.path.join("nested/state");
+            write_private_file(&p, b"secret").unwrap();
+            assert_eq!(fs::read(&p).unwrap(), b"secret");
+            assert_eq!(
+                fs::metadata(&p).unwrap().permissions().mode() & 0o777,
+                0o600
+            );
+        }
+        #[test]
+        fn restricts_existing_file_permissions() {
+            let t = Temp::new();
+            let p = t.path.join("state");
+            fs::write(&p, "long previous value").unwrap();
+            fs::set_permissions(&p, fs::Permissions::from_mode(0o666)).unwrap();
+            write_private_file(&p, b"new").unwrap();
+            assert_eq!(fs::read(&p).unwrap(), b"new");
+            assert_eq!(
+                fs::metadata(&p).unwrap().permissions().mode() & 0o777,
+                0o600
+            );
+        }
+        #[test]
+        fn creates_executable_scripts() {
+            let t = Temp::new();
+            let p = t.path.join("script");
+            write_executable(&p, b"#!/bin/sh\nexit 0\n").unwrap();
+            assert_eq!(
+                fs::metadata(&p).unwrap().permissions().mode() & 0o777,
+                0o700
+            );
+            assert!(
+                std::process::Command::new("/bin/sh")
+                    .arg(&p)
+                    .status()
+                    .unwrap()
+                    .success()
+            );
+        }
+    }
+    mod when_reading_logs {
+        use super::*;
+        #[test]
+        fn returns_the_last_lines() {
+            let t = Temp::new();
+            let p = t.path.join("log");
+            fs::write(&p, "a\nb\nc\n").unwrap();
+            assert_eq!(tail(&p, 2), "b\nc");
+            assert_eq!(tail(&p, 99), "a\nb\nc");
+            assert_eq!(tail(&p, 0), "");
+        }
+        #[test]
+        fn handles_missing_and_empty_files() {
+            let t = Temp::new();
+            let p = t.path.join("log");
+            assert_eq!(tail(&p, 10), "");
+            fs::write(&p, "").unwrap();
+            assert_eq!(tail(&p, 10), "");
+        }
+    }
+    mod when_reading_a_pid_file {
+        use super::*;
+        #[test]
+        fn recognizes_the_current_process() {
+            let t = Temp::new();
+            let p = t.path.join("pid");
+            fs::write(&p, format!("{}\n", std::process::id())).unwrap();
+            assert_eq!(pid_alive(&p), Some(std::process::id() as i32));
+        }
+        #[test]
+        fn rejects_malformed_and_missing_files() {
+            let t = Temp::new();
+            let p = t.path.join("pid");
+            assert!(pid_alive(&p).is_none());
+            fs::write(&p, "not a pid").unwrap();
+            assert!(pid_alive(&p).is_none());
+        }
+    }
+    mod when_locating_a_program {
+        use super::*;
+        #[test]
+        fn finds_an_existing_absolute_path() {
+            let t = Temp::new();
+            let p = t.script("program", "exit 0");
+            assert_eq!(which(p.to_str().unwrap()), Some(p));
+        }
+        #[test]
+        fn rejects_a_missing_program() {
+            let t = Temp::new();
+            assert!(which(t.path.join("missing").to_str().unwrap()).is_none());
+        }
+    }
+}

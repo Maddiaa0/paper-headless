@@ -1,7 +1,19 @@
 auth
-└── when reading a sign-in code
-    ├── it takes a bare code
-    ├── it takes a callback link
-    ├── it takes a redirect url
-    ├── it rejects a link with no code
-    └── it rejects empty input
+├── when reading a sign-in code
+│   ├── it takes a bare code
+│   ├── it takes a callback link
+│   ├── it takes a redirect url
+│   ├── it rejects a link with no code
+│   ├── it rejects empty input
+│   ├── it trims surrounding whitespace
+│   └── it stops at a fragment
+├── when checking sign-in state
+│   ├── it rejects an authentication error page
+│   ├── it ignores background windows
+│   ├── it recognizes the sign-in page
+│   ├── it recognizes an open file
+│   ├── it ignores unrelated origins
+│   └── it prefers signed out over a file
+└── when waiting for a browser url
+    ├── it reads the last nonempty line
+    └── it times out for a missing file
