@@ -118,8 +118,11 @@ pub(crate) fn install(settings: &Settings, scope: Scope) -> Result<()> {
     crate::paper::ensure_binary(settings)?;
     let binary = env::current_exe()?;
     let path = scope.unit_path()?;
-    paths::write_private_file(&path, unit_contents(settings, scope, &binary)?.as_bytes())?;
-    fs::set_permissions(&path, std::os::unix::fs::PermissionsExt::from_mode(0o644))?;
+    paths::write_file(
+        &path,
+        unit_contents(settings, scope, &binary)?.as_bytes(),
+        0o644,
+    )?;
     println!("wrote {}", path.display());
     if matches!(scope, Scope::User) {
         // Keep the user manager (and Paper) alive after logout.

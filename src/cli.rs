@@ -4,6 +4,7 @@
 use crate::service::Scope;
 use crate::settings::{
     DEFAULT_CDP_PORT, DEFAULT_DISPLAY, DEFAULT_MCP_PORT, DEFAULT_SCREEN, Settings,
+    default_data_dir, display_number, locate_paper_binary,
 };
 use crate::{Result, agents, auth, doctor, mcp, paths, service, supervisor};
 use clap::{Args, Parser, Subcommand};
@@ -50,6 +51,23 @@ struct GlobalArgs {
     /// Manage a systemd system unit instead of a user unit
     #[arg(long, global = true)]
     system: bool,
+}
+
+impl GlobalArgs {
+    fn settings(self) -> Result<Settings> {
+        display_number(&self.display)?;
+        Ok(Settings {
+            data_dir: match self.data_dir {
+                Some(directory) => directory,
+                None => default_data_dir()?,
+            },
+            display: self.display,
+            screen: self.screen,
+            cdp_port: self.cdp_port,
+            mcp_port: self.mcp_port,
+            paper_binary: self.paper_binary.unwrap_or_else(locate_paper_binary),
+        })
+    }
 }
 
 #[derive(Subcommand)]
@@ -120,16 +138,8 @@ impl Cli {
 }
 
 pub(crate) fn dispatch(cli: Cli) -> Result<()> {
-    let g = cli.global;
-    let settings = Settings::resolve(
-        g.data_dir,
-        g.display,
-        g.screen,
-        g.cdp_port,
-        g.mcp_port,
-        g.paper_binary,
-    )?;
-    let scope = Scope::from_flag(g.system);
+    let scope = Scope::from_flag(cli.global.system);
+    let settings = cli.global.settings()?;
     match cli.command {
         Commands::Serve => supervisor::serve(&settings),
         Commands::Install { skip_agents } => {

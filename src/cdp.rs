@@ -88,13 +88,14 @@ impl Session {
 
     /// Click the centre of the first `<button>` on the page with trusted
     /// mouse events, which is what the sign-in page's handler requires.
-    pub(crate) fn click_first_button(&mut self) -> Result<(f64, f64)> {
+    /// Returns false if the page has no button yet.
+    pub(crate) fn click_first_button(&mut self) -> Result<bool> {
         let rect = self.evaluate(
             "(() => { const b = document.querySelector('button'); if (!b) return null; \
              const r = b.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; })()",
         )?;
         if rect.is_null() {
-            return Err(Error::msg("no <button> found on the sign-in page"));
+            return Ok(false);
         }
         let field = |name: &str| rect.get(name).and_then(Value::as_f64).unwrap_or(0.0);
         let x = (field("x") + field("w") / 2.0).round();
@@ -111,7 +112,7 @@ impl Session {
             "Input.dispatchMouseEvent",
             json!({ "type": "mouseReleased", "x": x, "y": y, "button": "left", "clickCount": 1 }),
         )?;
-        Ok((x, y))
+        Ok(true)
     }
 }
 

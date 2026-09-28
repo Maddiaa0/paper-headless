@@ -31,7 +31,11 @@ pub(crate) fn ensure_shim(settings: &Settings) -> Result<()> {
         "#!/bin/sh\n# Installed by paper-headless: records URLs Paper asks to open.\nprintf '%s\\n' \"$@\" >> '{}'\nexit 0\n",
         settings.auth_url_file().display()
     );
-    paths::write_executable(&settings.shim_dir().join("xdg-open"), script.as_bytes())
+    paths::write_file(
+        &settings.shim_dir().join("xdg-open"),
+        script.as_bytes(),
+        0o700,
+    )
 }
 
 fn shimmed_path(settings: &Settings) -> String {

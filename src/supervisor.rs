@@ -133,9 +133,8 @@ fn start_xvfb(settings: &Settings) -> Result<Option<Child>> {
         .stderr(Stdio::from(log_file))
         .spawn()
         .map_err(|error| Error::msg(format!("could not start Xvfb: {error}")))?;
-    wait_for(Duration::from_secs(10), || settings.x_socket().exists()).or_else(|| {
-        let _ = child.kill();
-        None
+    let ready = wait_for(Duration::from_secs(10), || {
+        settings.x_socket().exists() || matches!(child.try_wait(), Ok(Some(_)))
     });
     if let Some(status) = child.try_wait()? {
         return Err(Error::msg(format!(
@@ -143,10 +142,10 @@ fn start_xvfb(settings: &Settings) -> Result<Option<Child>> {
             paths::tail(&settings.xvfb_log(), 10)
         )));
     }
-    if !settings.x_socket().exists() {
+    if !ready {
         terminate(&mut child, Duration::from_secs(2));
         return Err(Error::msg(format!(
-            "Xvfb did not create {}",
+            "Xvfb did not create {} within 10s",
             settings.x_socket().display()
         )));
     }
@@ -180,7 +179,7 @@ fn start_dbus(settings: &Settings) -> Result<Option<Child>> {
         .stderr(Stdio::null())
         .spawn()
         .map_err(|error| Error::msg(format!("could not start dbus-daemon: {error}")))?;
-    if wait_for(Duration::from_secs(5), || socket.exists()).is_none() {
+    if !wait_for(Duration::from_secs(5), || socket.exists()) {
         terminate(&mut child, Duration::from_secs(2));
         log("dbus-daemon did not create its socket; continuing without a session bus");
         return Ok(None);
@@ -196,15 +195,15 @@ pub(crate) fn port_open(port: u16) -> bool {
     .is_ok()
 }
 
-fn wait_for(timeout: Duration, condition: impl Fn() -> bool) -> Option<()> {
+fn wait_for(timeout: Duration, mut condition: impl FnMut() -> bool) -> bool {
     let started = Instant::now();
     while started.elapsed() < timeout {
         if condition() {
-            return Some(());
+            return true;
         }
         sleep(Duration::from_millis(100));
     }
-    None
+    false
 }
 
 /// SIGTERM, wait up to `grace`, then SIGKILL.

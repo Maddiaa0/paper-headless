@@ -3,39 +3,24 @@
 use crate::Result;
 use std::fs;
 use std::io::Write;
-use std::os::unix::fs::OpenOptionsExt;
+use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
-/// Write a file readable only by its owner.
-pub(crate) fn write_private_file(path: &Path, contents: &[u8]) -> Result<()> {
-    write_with_mode(path, contents, 0o600)
-}
-
-/// Write an owner-only executable script.
-pub(crate) fn write_executable(path: &Path, contents: &[u8]) -> Result<()> {
-    write_with_mode(path, contents, 0o700)
-}
-
-fn write_with_mode(path: &Path, contents: &[u8], mode: u32) -> Result<()> {
+/// Write a file and set its permission bits, whether or not it existed.
+pub(crate) fn write_file(path: &Path, contents: &[u8], mode: u32) -> Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
-    let mut options = fs::OpenOptions::new();
-    options.write(true).create(true).truncate(true).mode(mode);
-    let mut file = options.open(path)?;
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(mode)
+        .open(path)?;
     file.write_all(contents)?;
     file.sync_all()?;
-    fs::set_permissions(path, fs::Permissions::from(PermissionsMode(mode)))?;
+    fs::set_permissions(path, fs::Permissions::from_mode(mode))?;
     Ok(())
-}
-
-struct PermissionsMode(u32);
-
-impl From<PermissionsMode> for fs::Permissions {
-    fn from(mode: PermissionsMode) -> Self {
-        use std::os::unix::fs::PermissionsExt;
-        fs::Permissions::from_mode(mode.0)
-    }
 }
 
 /// Locate an executable on `PATH`.
