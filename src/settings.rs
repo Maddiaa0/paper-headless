@@ -24,33 +24,6 @@ pub(crate) struct Settings {
 }
 
 impl Settings {
-    pub(crate) fn resolve(
-        data_dir: Option<PathBuf>,
-        display: String,
-        screen: String,
-        cdp_port: u16,
-        mcp_port: u16,
-        paper_binary: Option<PathBuf>,
-    ) -> Result<Self> {
-        let data_dir = match data_dir {
-            Some(directory) => directory,
-            None => default_data_dir()?,
-        };
-        display_number(&display)?;
-        let paper_binary = match paper_binary {
-            Some(binary) => binary,
-            None => locate_paper_binary(),
-        };
-        Ok(Self {
-            data_dir,
-            display,
-            screen,
-            cdp_port,
-            mcp_port,
-            paper_binary,
-        })
-    }
-
     pub(crate) fn profile_dir(&self) -> PathBuf {
         self.data_dir.join("profile")
     }
@@ -118,7 +91,7 @@ pub(crate) fn home_dir() -> Result<PathBuf> {
         .ok_or_else(|| Error::msg("HOME is not set"))
 }
 
-fn default_data_dir() -> Result<PathBuf> {
+pub(crate) fn default_data_dir() -> Result<PathBuf> {
     let base = env::var_os("XDG_DATA_HOME")
         .map(PathBuf::from)
         .unwrap_or(home_dir()?.join(".local").join("share"));

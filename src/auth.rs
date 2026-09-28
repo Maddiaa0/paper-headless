@@ -14,6 +14,8 @@ use std::time::{Duration, Instant};
 const SIGN_IN_PAGE: &str = "/desktop/sign-in";
 /// Chromium persists cookies to disk on a timer; restarting sooner loses them.
 const COOKIE_FLUSH_WAIT: Duration = Duration::from_secs(35);
+/// How long `login` waits for a freshly started Paper to show a page.
+const STARTUP_WAIT: Duration = Duration::from_secs(90);
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub(crate) enum SignInState {
@@ -27,37 +29,57 @@ pub(crate) fn sign_in_state(settings: &Settings) -> Result<SignInState> {
     if pages.iter().any(|page| page.url.contains(SIGN_IN_PAGE)) {
         return Ok(SignInState::SignedOut);
     }
-    if pages.iter().any(|page| page.url.contains("paper.design")) {
+    // Paper answers MCP `initialize` only once it is signed in and loaded.
+    if mcp::probe(&settings.mcp_url()).is_ok_and(|probe| probe.is_ready()) {
         return Ok(SignInState::SignedIn);
     }
     Ok(SignInState::Unknown)
 }
 
+fn not_running(settings: &Settings) -> Error {
+    Error::msg(format!(
+        "Paper is not reachable on {}; start it with `paper-headless start` \
+         (or `paper-headless serve` in a terminal) and try again",
+        settings.cdp_url()
+    ))
+}
+
 fn require_running(settings: &Settings) -> Result<()> {
-    cdp::pages(&settings.cdp_url()).map(|_| ()).map_err(|_| {
-        Error::msg(format!(
-            "Paper is not reachable on {}; start it with `paper-headless start` \
-             (or `paper-headless serve` in a terminal) and try again",
-            settings.cdp_url()
-        ))
-    })
+    cdp::pages(&settings.cdp_url())
+        .map(|_| ())
+        .map_err(|_| not_running(settings))
+}
+
+/// Wait for a starting Paper to load either its sign-in page or the app.
+fn wait_for_app(settings: &Settings) -> Result<SignInState> {
+    let serving = paths::pid_alive(&settings.serve_pid_file()).is_some();
+    let started = Instant::now();
+    let mut announced = false;
+    loop {
+        let state = sign_in_state(settings);
+        let loading = matches!(state, Ok(SignInState::Unknown) | Err(_));
+        if !(loading && serving && started.elapsed() < STARTUP_WAIT) {
+            return match state {
+                Ok(SignInState::Unknown) => Err(Error::msg(
+                    "could not find Paper's sign-in page; check `paper-headless logs`",
+                )),
+                Ok(state) => Ok(state),
+                Err(_) => Err(not_running(settings)),
+            };
+        }
+        if !announced {
+            println!("Waiting for Paper to start…");
+            announced = true;
+        }
+        sleep(Duration::from_secs(1));
+    }
 }
 
 pub(crate) fn login(settings: &Settings, wait: bool) -> Result<()> {
-    require_running(settings)?;
-    match sign_in_state(settings)? {
-        SignInState::SignedIn => {
-            println!("Paper is already signed in.");
-            println!("{}", mcp::describe(&mcp::probe(&settings.mcp_url())?));
-            return Ok(());
-        }
-        SignInState::Unknown => {
-            return Err(Error::msg(
-                "could not find Paper's sign-in page; wait a few seconds after start and retry, \
-                 or check `paper-headless logs`",
-            ));
-        }
-        SignInState::SignedOut => {}
+    if wait_for_app(settings)? == SignInState::SignedIn {
+        println!("Paper is already signed in.");
+        println!("{}", mcp::describe(&mcp::probe(&settings.mcp_url())?));
+        return Ok(());
     }
 
     let auth_url_file = settings.auth_url_file();
@@ -68,7 +90,14 @@ pub(crate) fn login(settings: &Settings, wait: bool) -> Result<()> {
         .find(|page| page.url.contains(SIGN_IN_PAGE))
         .and_then(|page| page.ws_url.as_deref())
         .ok_or_else(|| Error::msg("sign-in page has no DevTools socket"))?;
-    cdp::Session::connect(page)?.click_first_button()?;
+    let mut session = cdp::Session::connect(page)?;
+    let started = Instant::now();
+    while !session.click_first_button()? {
+        if started.elapsed() > Duration::from_secs(20) {
+            return Err(Error::msg("the sign-in page never showed its button"));
+        }
+        sleep(Duration::from_millis(250));
+    }
 
     let url = wait_for_line(&auth_url_file, Duration::from_secs(20)).ok_or_else(|| {
         Error::msg(format!(
@@ -118,13 +147,10 @@ pub(crate) fn login_code(settings: &Settings, input: &str, wait_for_flush: bool)
     paper::send_deep_link(settings, &format!("paper://auth/callback?code={code}"))?;
 
     let deadline = Instant::now() + Duration::from_secs(30);
-    while Instant::now() < deadline {
-        if sign_in_state(settings)? == SignInState::SignedIn {
-            break;
-        }
+    while Instant::now() < deadline && sign_in_state(settings)? == SignInState::SignedOut {
         sleep(Duration::from_secs(1));
     }
-    if sign_in_state(settings)? != SignInState::SignedIn {
+    if sign_in_state(settings)? == SignInState::SignedOut {
         return Err(Error::msg(format!(
             "Paper is still on its sign-in page. Codes are single-use and expire quickly; \
              run `paper-headless login` again for a fresh URL. Recent log lines:\n{}",

@@ -1,53 +1,48 @@
 # paper-headless
 
-Run [Paper Desktop](https://paper.design) on a headless Linux server so its
-local MCP server is available to the agents running there.
-
-Paper's MCP server lives inside the desktop app and only starts once the app is
-signed in. On a server there is no screen and no browser, so paper-headless:
-
-- runs Paper under a virtual X display (Xvfb) as a supervised background service,
-- relays the one-time browser sign-in to any machine you like,
-- registers the MCP endpoint with Claude Code and Codex.
-
-It does not reimplement or proxy any MCP tools. Agents talk to Paper's own
-endpoint at `http://127.0.0.1:29979/mcp` directly.
-
-## Install
-
-Debian/Ubuntu, x86_64 or arm64:
+Run [Paper Desktop](https://paper.design) on a headless Linux server, so agents
+running there can use Paper's MCP server.
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/Maddiaa0/paper-headless/main/install.sh | bash
+paper-headless login    # open the printed URL on any machine, paste the link back
+paper-headless check    # MCP is ready
 ```
 
-The installer asks before each step: the `paper-headless` binary into
-`~/.local/bin`, `xvfb` + `dbus-daemon` + `xdg-utils` from the distro repos,
-Paper Desktop from Paper's own apt repository (`download.paper.design`), and
-finally the background service. Pass `-s -- --yes` to accept everything, or
-`--from-source` to build with cargo (Rust nightly `1.98`, pinned by
-`rust-toolchain.toml`).
+Claude Code and Codex are configured for you. Any other MCP client can use
+`http://127.0.0.1:29979/mcp` (Streamable HTTP, no auth).
 
-From a checkout: `cargo install --path . --locked`.
+> Unofficial. Not affiliated with or endorsed by Paper.
 
-## Getting started
+## Install
+
+The installer supports Debian and Ubuntu on x86_64 and arm64. It asks before
+each step:
+
+1. installs the `paper-headless` binary into `~/.local/bin`;
+2. installs `xvfb`, `dbus-daemon`, and `xdg-utils` from the distro repos;
+3. installs Paper Desktop from Paper's apt repository (`download.paper.design`);
+4. installs the background service and registers the MCP server as `paper` with Claude Code and Codex.
+
+Pass `-s -- --yes` to accept every step, or `--from-source` to build with cargo.
+
+To install only the binary, use one of these. Then install Xvfb and Paper
+Desktop yourself and run `paper-headless install`:
 
 ```sh
-paper-headless install     # systemd user service + Claude Code / Codex config
-paper-headless login       # prints a sign-in URL; open it anywhere, paste the result back
-paper-headless check       # MCP handshake succeeds
+npm install -g @maddiaa0/paper-headless
+brew install maddiaa0/tap/paper-headless
+cargo install paper-headless --locked
 ```
 
-`login` clicks Paper's "Sign in" button for you and captures the URL the app
-wanted to open in a browser. Open that URL on your laptop, sign in, and you
-land on an "Opening Paper…" page. Copy the `paper://auth/callback?code=…` link
-behind its "click here" fallback (or the page's own address) and paste it at
-the prompt, or run `paper-headless login-code '<link>'` later. The session is
-stored in Paper's profile and survives restarts, so this is a one-time step.
+## Signing in
 
-If Claude Code or Codex are installed, `install` runs `claude mcp add` and
-`codex mcp add` for a server named `paper`. Any other MCP client can use the
-endpoint as Streamable HTTP with no authentication.
+`login` clicks Paper's "Sign in" button and prints the URL Paper wanted to open
+in a browser. Open it on your laptop and sign in. You land on an "Opening
+Paper…" page. Copy the `paper://auth/callback?code=…` link behind its "click
+here" fallback, or the page's own address, and paste it at the prompt. You can
+also run `paper-headless login-code '<link>'` later. The login is stored in
+Paper's profile and survives restarts, so you only do this once.
 
 ## Commands
 
