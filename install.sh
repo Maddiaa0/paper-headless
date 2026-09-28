@@ -6,7 +6,7 @@
 #   curl -fsSL ... | bash -s -- --from-source  # build with cargo instead of downloading a release
 #
 # What it does, asking before each step that touches the system:
-#   1. installs the paper-headless binary into ~/.local/bin (release tarball, sha256-verified)
+#   1. installs the paper-headless binary into ~/.local/bin (release installer, checksum-verified)
 #   2. installs Xvfb + dbus + xdg-utils from the distro repos (needed to run Paper without a screen)
 #   3. adds Paper's apt repository and installs Paper Desktop (skipped if already installed)
 #   4. installs and starts the background service, then registers the MCP endpoint with
@@ -24,7 +24,7 @@ for arg in "$@"; do
   case "$arg" in
     -y|--yes) YES=1 ;;
     --from-source) FROM_SOURCE=1 ;;
-    -h|--help) sed -n '2,14p' "$0"; exit 0 ;;
+    -h|--help) echo "usage: install.sh [--yes] [--from-source]"; exit 0 ;;
     *) echo "unknown option: $arg" >&2; exit 2 ;;
   esac
 done
@@ -53,33 +53,11 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 HAVE_APT=0; command -v apt-get >/dev/null && HAVE_APT=1
 
-ARCH=$(uname -m)
-case "$ARCH" in
-  x86_64) TARGET=x86_64-unknown-linux-musl ;;
-  aarch64|arm64) TARGET=aarch64-unknown-linux-musl ;;
-  *) die "unsupported architecture $ARCH" ;;
-esac
-
 # ---------------------------------------------------------------- 1. binary
 install_from_release() {
-  local tag api asset tmp
-  if [ "$VERSION" = latest ]; then
-    api="https://api.github.com/repos/$REPO/releases/latest"
-  else
-    api="https://api.github.com/repos/$REPO/releases/tags/$VERSION"
-  fi
-  tag=$(curl -fsSL "$api" 2>/dev/null | sed -n 's/^ *"tag_name": *"\([^"]*\)".*/\1/p' | head -1) || true
-  [ -n "$tag" ] || return 1
-  asset="paper-headless-$tag-$TARGET.tar.gz"
-  tmp=$(mktemp -d)
-  say "downloading $asset"
-  curl -fsSL -o "$tmp/$asset" "https://github.com/$REPO/releases/download/$tag/$asset" || { rm -rf "$tmp"; return 1; }
-  curl -fsSL -o "$tmp/SHA256SUMS" "https://github.com/$REPO/releases/download/$tag/SHA256SUMS" || { rm -rf "$tmp"; return 1; }
-  (cd "$tmp" && grep " $asset\$" SHA256SUMS | sha256sum -c --quiet -) || { rm -rf "$tmp"; die "checksum mismatch for $asset"; }
-  tar -xzf "$tmp/$asset" -C "$tmp"
-  mkdir -p "$BIN_DIR"
-  install -m 0755 "$tmp/paper-headless" "$BIN_DIR/paper-headless"
-  rm -rf "$tmp"
+  local url="https://github.com/$REPO/releases/latest/download/paper-headless-installer.sh"
+  [ "$VERSION" = latest ] || url="https://github.com/$REPO/releases/download/$VERSION/paper-headless-installer.sh"
+  curl --proto '=https' --tlsv1.2 -LsSf "$url" | PAPER_HEADLESS_INSTALL_DIR="$BIN_DIR" sh
 }
 
 install_from_source() {
@@ -91,7 +69,7 @@ install_from_source() {
 
 say "installing paper-headless into $BIN_DIR"
 if [ "$FROM_SOURCE" = 1 ] || ! install_from_release; then
-  [ "$FROM_SOURCE" = 1 ] || warn "no release tarball available for $TARGET; building from source"
+  [ "$FROM_SOURCE" = 1 ] || warn "no release available; building from source"
   install_from_source
 fi
 case ":$PATH:" in *":$BIN_DIR:"*) ;; *) warn "$BIN_DIR is not on your PATH; add: export PATH=\"$BIN_DIR:\$PATH\"" ;; esac
